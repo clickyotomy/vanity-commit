@@ -25,8 +25,7 @@ def parse(commit):
     '''
     Parse the commit object into a JSON.
     '''
-    payload = dict()
-    author, committer, messages = None, None, []
+    payload, author, committer, messages = {}, None, None, []
     cat_file = ['git', 'cat-file', 'commit', commit]
     execute = Popen(cat_file, stdout=PIPE, stdin=PIPE)
     stdout, _ = execute.communicate()
@@ -42,7 +41,6 @@ def parse(commit):
 
     if execute.returncode == 0:
         payload.update({'length': len(stdout)})
-        lines = stdout.split('\n')
         payload.update({
             'raw': stdout,
             'length': len(stdout),
@@ -55,7 +53,6 @@ def parse(commit):
     if DEBUG_FLAG:
         print 'Parsed commit object:'
         print json.dumps(payload, indent=4, sort_keys=True)
-
     return payload
 
 
@@ -113,6 +110,7 @@ def generate_hash(payload, prefix):
 
     while not solution.startswith(prefix):
         flag = True
+
         random = 'foo: {0}'.format(sha1(str(os.urandom(64))).hexdigest())
         length = str(payload['length'] + len(random) + 2)
         to_be_hashed = ''.join(['commit ', length, NULL, payload['raw'],
@@ -148,14 +146,17 @@ def make_commit(commit, prefix):
     if flag:
         os.environ['GIT_AUTHOR_DATE'] = payload['author']
         os.environ['GIT_COMMITTER_DATE'] = payload['committer']
+
         messages = payload['message'].split('\n') + [string]
         messages = map(lambda x: x if x != '' else '-m', messages)
 
         commit_it = ['git', 'commit', '--amend'] + messages
+
         if DEBUG_FLAG:
             print 'Commit command:\n{0}'.format(commit_it)
 
         execute = Popen(commit_it, stdout=PIPE, stderr=PIPE)
+
         stdout, _ = execute.communicate()
         print stdout
 
