@@ -86,7 +86,12 @@ def reconstruct(commit):
     Print the raw content of the commit object from the repository.
     '''
     commit_hash = get_hash(commit)
-    path = '.git/objects/' + commit_hash[:2] + '/' + commit_hash[2:]
+    current = os.getcwd()
+    path = current + '/.git/objects/' + commit_hash[:2] + '/' + commit_hash[2:]
+
+    if DEBUG_FLAG:
+        print 'Reading from: {0}'.format(path)
+
     with open(path) as _file:
         print zlib.decompress(_file.read())
 
