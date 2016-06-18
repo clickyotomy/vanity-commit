@@ -1,0 +1,17 @@
+vanity-commit
+-------------
+
+Make a 'git commit' with a prefix for the commit hash you like.
+
+usage: commit.py [-h] -p PREFIX [-d]
+
+Create vanity commits with a prefix you want.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -p PREFIX, --prefix PREFIX
+                        a valid hexadecimal prefix
+  -d, --debug           enable debugging
+
+CAVEATS
+    [+] Lengthy hash prefixes will take longer amounts of compute time.
