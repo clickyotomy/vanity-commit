@@ -117,7 +117,6 @@ def generate_hash(payload, prefix):
         if not flag:
             print ('Existing prefix and the specified prefix '
                    'are the same; nothing to do here.')
-
         else:
             print 'Calculated SHA1: {0}.'.format(solution)
             print 'Random string to be appended: {0}.'.format(random)
