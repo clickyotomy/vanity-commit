@@ -13,10 +13,6 @@ import argparse
 from hashlib import sha1
 from subprocess import Popen, PIPE
 
-# Helpers to parse commit objects.
-NULL = '\0'
-TIMESTAMP = r'\>.*\d{10}\s'
-
 # Debug flag.
 DEBUG_FLAG = False
 
@@ -63,7 +59,7 @@ def get_timestamp(string):
     if DEBUG_FLAG:
         print 'Received: {0}.'.format(string)
 
-    timestamp = re.search(TIMESTAMP, string).group()
+    timestamp = re.search(r'\>.*\d{10}\s', string).group()
     timestamp = re.sub('>', '', timestamp).strip()
     return timestamp
 
@@ -113,7 +109,7 @@ def generate_hash(payload, prefix):
 
         random = 'foo: {0}'.format(sha1(str(os.urandom(64))).hexdigest())
         length = str(payload['length'] + len(random) + 2)
-        to_be_hashed = ''.join(['commit ', length, NULL, payload['raw'],
+        to_be_hashed = ''.join(['commit ', length, '\0', payload['raw'],
                                 '\n', random, '\n'])
         solution = sha1(to_be_hashed).hexdigest()
 
