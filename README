@@ -16,6 +16,12 @@ optional arguments:
 CAVEATS
     [+] Lengthy hash prefixes will take longer amounts of compute time.
 
+
+CHANGELOG
+    [+] Works as intended. Meh.
+    [+] We have parallelization now. Woohoo!
+
+
 How does it work?
     Tries to append the commit message with a random string and computes the
     hash. This is done in a brute-force way. The script runs in loop till a
