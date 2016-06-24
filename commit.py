@@ -8,13 +8,29 @@ import os
 import re
 import sys
 import zlib
-import json
+import time
 import argparse
 from hashlib import sha1
 from subprocess import Popen, PIPE
+from multiprocessing import Process, Queue, cpu_count
+
 
 # Debug flag.
 DEBUG_FLAG = False
+
+# Debug messages.
+REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.'.format
+REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
+                             '{hash}.').format
+REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
+                   '({specified}) and the current prefix ({current}) '
+                   'is the same.').format
+COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.'.format
+RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.'.format
+TIMESTAMP_PARSE = '[{method}] Parsing \'{string}\' for timestamps.'.format
+INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
+               'hexadecimal prefix').format
+GIT_COMMIT = '[{method}] Executing: {execute}'.format
 
 
 def parse(commit):
@@ -47,8 +63,9 @@ def parse(commit):
         })
 
     if DEBUG_FLAG:
-        print 'Parsed commit object:'
-        print json.dumps(payload, indent=4, sort_keys=True)
+        print '[parse] Contents of {commit}:'.format(commit=commit)
+        print payload['raw']
+
     return payload
 
 
@@ -57,14 +74,14 @@ def get_timestamp(string):
     Get the timestamp from the commit object.
     '''
     if DEBUG_FLAG:
-        print 'Received: {0}.'.format(string)
+        print TIMESTAMP_PARSE(method='get_timestamp', string=string)
 
     timestamp = re.search(r'\>.*\d{10}\s', string).group()
     timestamp = re.sub('>', '', timestamp).strip()
     return timestamp
 
 
-def get_hash(commit):
+def get_hash(commit, _id=None):
     '''
     Get the SHA1 of the commit (if refspecs are used).
     '''
@@ -77,7 +94,12 @@ def get_hash(commit):
         commit_hash = stdout.strip()
 
     if DEBUG_FLAG:
-        print 'SHA1 of {0}: {1}.'.format(commit, commit_hash)
+        if _id is None:
+            print REV_PARSE_MESSAGE(method='get_hash', revision=commit,
+                                    hash=commit_hash)
+        else:
+            print REV_PARSE_MESSAGE_WITH_ID(fork=_id, method='get_hash',
+                                            revision=commit, hash=commit_hash)
     return commit_hash
 
 
@@ -90,29 +112,29 @@ def reconstruct(commit):
     path = current + '/.git/objects/' + commit_hash[:2] + '/' + commit_hash[2:]
 
     if DEBUG_FLAG:
-        print 'Reading from: {0}'.format(path)
+        print '[reconstruct] Reading from: {0}'.format(path)
 
     with open(path) as _file:
         print zlib.decompress(_file.read())
 
 
-def generate_hash(payload, prefix):
+def generate_hash(payload, prefix, commits, bits, _id):
     '''
     Generate SHA1 hash of the commit object.
     '''
-    solution, random, flag = get_hash(payload['commit']), '', False
+    solution, random, flag = get_hash(payload['commit'], _id), '', False
 
     try:
         int(prefix, 16)
     except ValueError:
         if DEBUG_FLAG:
-            print '{0} is not a valid hexadecimal prefix.'.format(prefix)
-        return solution, random, False
+            print INVALID_HEX(fork=_id, method='generate_hash', hash=prefix)
+        commits.put((solution, random, flag))
+        return
 
-    while not solution.startswith(prefix):
+    while not solution.startswith(prefix) and commits.empty():
         flag = True
-
-        random = 'foo: {0}'.format(sha1(str(os.urandom(64))).hexdigest())
+        random = 'foo: {0}'.format(sha1(str(os.urandom(bits))).hexdigest())
         length = str(payload['length'] + len(random) + 2)
         to_be_hashed = ''.join(['commit ', length, '\0', payload['raw'],
                                 '\n', random, '\n'])
@@ -120,12 +142,20 @@ def generate_hash(payload, prefix):
 
     if DEBUG_FLAG:
         if not flag:
-            print ('Existing prefix and the specified prefix '
-                   'are the same; nothing to do here.')
+            print REPEATED_PREFIX(fork=_id, method='generate_hash',
+                                  specified=prefix, current=solution)
         else:
-            print 'Calculated SHA1: {0}.'.format(solution)
-            print 'Random string to be appended: {0}.'.format(random)
-    return solution, random, flag
+            if commits.empty():
+                print COMPUTED_HASH(fork=_id, method='generate_hash',
+                                    hash=solution)
+                print RANDOM_STRING(fork=_id, method='generate_hash',
+                                    random=random)
+
+    if commits.empty():
+        commits.put((solution, random, flag))
+        return
+    else:
+        return
 
 
 def post(expected, revision):
@@ -141,7 +171,20 @@ def make_commit(commit, prefix):
     Make a commit with the prefix.
     '''
     payload = parse(commit)
-    expected, string, flag = generate_hash(payload, prefix)
+    processes, commits, expected, string, flag = [], Queue(), None, None, False
+
+    init_bit = 2
+    for _ in xrange(cpu_count()):
+        process = Process(target=generate_hash,
+                          args=(payload, prefix, commits, init_bit, _))
+        process.start()
+        processes.append(process)
+        init_bit *= init_bit
+
+    expected, string, flag = commits.get()
+
+    for process in processes:
+        process.join()
 
     if flag:
         os.environ['GIT_AUTHOR_DATE'] = payload['author']
@@ -153,7 +196,7 @@ def make_commit(commit, prefix):
         commit_it = ['git', 'commit', '--amend'] + messages
 
         if DEBUG_FLAG:
-            print 'Commit command:\n{0}'.format(commit_it)
+            print GIT_COMMIT(method='make_commit', execute=' '.join(commit_it))
 
         execute = Popen(commit_it, stdout=PIPE, stderr=PIPE)
 
@@ -184,13 +227,15 @@ def main():
     if args['debug']:
         DEBUG_FLAG = True
 
+    start = time.time()
     validated = make_commit('HEAD', args['prefix'])
-
+    end = time.time()
     if DEBUG_FLAG:
         if validated:
             print 'Done.'
         else:
             print 'Fail.'
+        print 'Runtime: {seconds}s.'.format(seconds=(end - start))
 
     return_code = 0 if validated else 1
     sys.exit(return_code)
