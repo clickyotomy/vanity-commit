@@ -19,18 +19,19 @@ from multiprocessing import Process, Queue, cpu_count
 DEBUG_FLAG = False
 
 # Debug messages.
-REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.'.format
-REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
-                             '{hash}.').format
-REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
-                   '({specified}) and the current prefix ({current}) '
-                   'is the same.').format
+GIT_COMMIT = '[{method}] Executing: {execute}'.format
+INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
+               'hexadecimal prefix').format
 COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.'.format
 RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.'.format
 TIMESTAMP_PARSE = '[{method}] Parsing \'{string}\' for timestamps.'.format
-INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
-               'hexadecimal prefix').format
-GIT_COMMIT = '[{method}] Executing: {execute}'.format
+REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
+                   '({specified}) and the current prefix ({current}) '
+                   'is the same.').format
+REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.'.format
+REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
+                             '{hash}.').format
+
 
 
 def parse(commit):
