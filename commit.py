@@ -11,6 +11,7 @@ import zlib
 import time
 import argparse
 from hashlib import sha1
+from textwrap import fill
 from subprocess import Popen, PIPE
 from multiprocessing import Process, Queue, cpu_count
 
@@ -19,19 +20,19 @@ from multiprocessing import Process, Queue, cpu_count
 DEBUG_FLAG = False
 
 # Debug messages.
-GIT_COMMIT = '[{method}] Executing: {execute}'.format
+GIT_COMMIT = '[{method}] Executing git-commit:\n'.format
 INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
-               'hexadecimal prefix').format
-COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.'.format
-RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.'.format
+               'hexadecimal prefix.\n').format
+COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.\n'.format
+RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.\n'.format
 TIMESTAMP_PARSE = '[{method}] Parsing \'{string}\' for timestamps.'.format
 REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
                    '({specified}) and the current prefix ({current}) '
-                   'is the same.').format
-REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.'.format
+                   'is the same.\n').format
+REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.\n'.format
 REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
-                             '{hash}.').format
-
+                             '{hash}.\n').format
+DELIMITER = '{symbol}'.format(symbol=''.join(['-' * 70]))
 
 
 def parse(commit):
@@ -64,8 +65,9 @@ def parse(commit):
         })
 
     if DEBUG_FLAG:
-        print '[parse] Contents of {commit}:'.format(commit=commit)
+        print fill('[parse] Contents of {commit}:\n'.format(commit=commit))
         print payload['raw']
+        print DELIMITER
 
     return payload
 
@@ -75,7 +77,8 @@ def get_timestamp(string):
     Get the timestamp from the commit object.
     '''
     if DEBUG_FLAG:
-        print TIMESTAMP_PARSE(method='get_timestamp', string=string)
+        print fill(TIMESTAMP_PARSE(method='get_timestamp', string=string))
+        print DELIMITER
 
     timestamp = re.search(r'\>.*\d{10}\s', string).group()
     timestamp = re.sub('>', '', timestamp).strip()
@@ -96,11 +99,14 @@ def get_hash(commit, _id=None):
 
     if DEBUG_FLAG:
         if _id is None:
-            print REV_PARSE_MESSAGE(method='get_hash', revision=commit,
-                                    hash=commit_hash)
+            print fill(REV_PARSE_MESSAGE(method='get_hash', revision=commit,
+                                         hash=commit_hash))
+            print DELIMITER
         else:
-            print REV_PARSE_MESSAGE_WITH_ID(fork=_id, method='get_hash',
-                                            revision=commit, hash=commit_hash)
+            print fill(REV_PARSE_MESSAGE_WITH_ID(fork=_id, method='get_hash',
+                                                 revision=commit,
+                                                 hash=commit_hash))
+            print DELIMITER
     return commit_hash
 
 
@@ -113,10 +119,11 @@ def reconstruct(commit):
     path = current + '/.git/objects/' + commit_hash[:2] + '/' + commit_hash[2:]
 
     if DEBUG_FLAG:
-        print '[reconstruct] Reading from: {0}'.format(path)
+        print fill('[reconstruct] Reading from: {0}'.format(path))
 
     with open(path) as _file:
-        print zlib.decompress(_file.read())
+        print fill(zlib.decompress(_file.read()))
+        print DELIMITER
 
 
 def generate_hash(payload, prefix, commits, bits, _id):
@@ -129,13 +136,15 @@ def generate_hash(payload, prefix, commits, bits, _id):
         int(prefix, 16)
     except ValueError:
         if DEBUG_FLAG:
-            print INVALID_HEX(fork=_id, method='generate_hash', hash=prefix)
+            print fill(INVALID_HEX(fork=_id, method='generate_hash',
+                                   hash=prefix))
+            print DELIMITER
         commits.put((solution, random, flag))
         return
 
     while not solution.startswith(prefix) and commits.empty():
         flag = True
-        random = 'foo: {0}'.format(sha1(str(os.urandom(bits))).hexdigest())
+        random = '{0}'.format(sha1(str(os.urandom(bits))).hexdigest())
         length = str(payload['length'] + len(random) + 2)
         to_be_hashed = ''.join(['commit ', length, '\0', payload['raw'],
                                 '\n', random, '\n'])
@@ -143,14 +152,16 @@ def generate_hash(payload, prefix, commits, bits, _id):
 
     if DEBUG_FLAG:
         if not flag:
-            print REPEATED_PREFIX(fork=_id, method='generate_hash',
-                                  specified=prefix, current=solution)
+            print fill(REPEATED_PREFIX(fork=_id, method='generate_hash',
+                                       specified=prefix, current=solution))
+            print DELIMITER
         else:
             if commits.empty():
-                print COMPUTED_HASH(fork=_id, method='generate_hash',
-                                    hash=solution)
-                print RANDOM_STRING(fork=_id, method='generate_hash',
-                                    random=random)
+                print fill(COMPUTED_HASH(fork=_id, method='generate_hash',
+                                         hash=solution))
+                print fill(RANDOM_STRING(fork=_id, method='generate_hash',
+                                         random=random))
+                print DELIMITER
 
     if commits.empty():
         commits.put((solution, random, flag))
@@ -188,16 +199,19 @@ def make_commit(commit, prefix):
         process.join()
 
     if flag:
+        git_commit = ['git', 'commit', '--amend']
         os.environ['GIT_AUTHOR_DATE'] = payload['author']
         os.environ['GIT_COMMITTER_DATE'] = payload['committer']
 
         messages = payload['message'].split('\n') + [string]
         messages = map(lambda x: x if x != '' else '-m', messages)
 
-        commit_it = ['git', 'commit', '--amend'] + messages
+        commit_it = git_commit + messages
 
         if DEBUG_FLAG:
-            print GIT_COMMIT(method='make_commit', execute=' '.join(commit_it))
+            print fill(GIT_COMMIT(method='make_commit'))
+            print fill(' '.join(commit_it))
+            print DELIMITER
 
         execute = Popen(commit_it, stdout=PIPE, stderr=PIPE)
 
@@ -229,7 +243,7 @@ def main():
         DEBUG_FLAG = True
 
     start = time.time()
-    validated = make_commit('HEAD', args['prefix'])
+    validated = make_commit('HEAD', args['prefix'].strip().lower())
     end = time.time()
     if DEBUG_FLAG:
         if validated:
