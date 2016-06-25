@@ -26,7 +26,6 @@ INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
                'hexadecimal prefix.\n').format
 COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.\n'.format
 RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.\n'.format
-TIMESTAMP_PARSE = '[{method}] Parsing \'{string}\' for timestamps.'.format
 COMMIT_METADATA = '[{method}] Commit metadata:\n{data}'.format
 REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
                    '({specified}) and the current prefix ({current}) '
@@ -34,7 +33,7 @@ REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
 REV_PARSE_MESSAGE = '[{method}] SHA1 of {revision}: {hash}.\n'.format
 REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
                              '{hash}.\n').format
-DELIMITER = '{symbol}'.format(symbol=''.join(['-' * 70]))
+DELIMITER = '{symbol}'.format(symbol=''.join(['-' * 3]))
 
 
 def who(commit):
