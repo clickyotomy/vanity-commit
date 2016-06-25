@@ -9,6 +9,7 @@ import re
 import sys
 import zlib
 import time
+import json
 import argparse
 from hashlib import sha1
 from textwrap import fill
@@ -26,6 +27,7 @@ INVALID_HEX = ('[fork #{fork}, {method}] {hash} has an invalid '
 COMPUTED_HASH = '[fork #{fork}, {method}] Computed SHA1: {hash}.\n'.format
 RANDOM_STRING = '[fork #{fork}, {method}] Random string: {random}.\n'.format
 TIMESTAMP_PARSE = '[{method}] Parsing \'{string}\' for timestamps.'.format
+COMMIT_METADATA = '[{method}] Commit metadata:\n{data}'.format
 REPEATED_PREFIX = ('[fork #{fork}, {method}] The supplied prefix '
                    '({specified}) and the current prefix ({current}) '
                    'is the same.\n').format
@@ -35,21 +37,44 @@ REV_PARSE_MESSAGE_WITH_ID = ('[fork #{fork}, {method}] SHA1 of {revision}: '
 DELIMITER = '{symbol}'.format(symbol=''.join(['-' * 70]))
 
 
+def who(commit):
+    '''
+    Get commit metadata about authors, committers.
+    '''
+    things = {
+        'an': 'author-name',
+        'cn': 'committer-name',
+        'ae': 'author-email',
+        'ce': 'committer-email',
+        'ad': 'author-date',
+        'cd': 'committer-date'
+    }
+
+    metadata = {}
+
+    for key, value in things.iteritems():
+        command = ['git', '--no-pager', 'show', '-s']
+        command.extend(['--format=%{what}'.format(what=key), commit])
+        stdout, _ = Popen(command, stdout=PIPE, stderr=PIPE).communicate()
+        metadata.update({value: stdout.strip()})
+
+    if DEBUG_FLAG:
+        print COMMIT_METADATA(method='who', data=json.dumps(metadata,
+                                                            indent=4))
+        print DELIMITER
+    return metadata
+
+
 def parse(commit):
     '''
     Parse the commit object into a JSON.
     '''
-    payload, author, committer, messages = {}, None, None, []
+    payload, messages = {}, []
     cat_file = ['git', 'cat-file', 'commit', commit]
     execute = Popen(cat_file, stdout=PIPE, stdin=PIPE)
     stdout, _ = execute.communicate()
 
     for line in stdout.split('\n'):
-        if re.search(r'author', line):
-            author = line
-        if re.search(r'committer', line):
-            committer = line
-
         if not re.search(r'^(author|committer|tree|parent|commit)', line):
             messages.append(line)
 
@@ -59,9 +84,7 @@ def parse(commit):
             'raw': stdout,
             'length': len(stdout),
             'commit': commit,
-            'author': get_timestamp(author),
             'message': '\n'.join(messages),
-            'committer': get_timestamp(committer)
         })
 
     if DEBUG_FLAG:
@@ -70,19 +93,6 @@ def parse(commit):
         print DELIMITER
 
     return payload
-
-
-def get_timestamp(string):
-    '''
-    Get the timestamp from the commit object.
-    '''
-    if DEBUG_FLAG:
-        print fill(TIMESTAMP_PARSE(method='get_timestamp', string=string))
-        print DELIMITER
-
-    timestamp = re.search(r'\>.*\d{10}\s', string).group()
-    timestamp = re.sub('>', '', timestamp).strip()
-    return timestamp
 
 
 def get_hash(commit, _id=None):
@@ -122,8 +132,10 @@ def reconstruct(commit):
         print fill('[reconstruct] Reading from: {0}'.format(path))
 
     with open(path) as _file:
-        print fill(zlib.decompress(_file.read()))
+        content = zlib.decompress(_file.read())
+        print content
         print DELIMITER
+        return content
 
 
 def generate_hash(payload, prefix, commits, bits, _id):
@@ -144,7 +156,7 @@ def generate_hash(payload, prefix, commits, bits, _id):
 
     while not solution.startswith(prefix) and commits.empty():
         flag = True
-        random = '{0}'.format(sha1(str(os.urandom(bits))).hexdigest())
+        random = sha1(str(os.urandom(bits))).hexdigest()
         length = str(payload['length'] + len(random) + 2)
         to_be_hashed = ''.join(['commit ', length, '\0', payload['raw'],
                                 '\n', random, '\n'])
@@ -152,8 +164,9 @@ def generate_hash(payload, prefix, commits, bits, _id):
 
     if DEBUG_FLAG:
         if not flag:
-            print fill(REPEATED_PREFIX(fork=_id, method='generate_hash',
-                                       specified=prefix, current=solution))
+            if commits.empty():
+                print fill(REPEATED_PREFIX(fork=_id, method='generate_hash',
+                                           specified=prefix, current=solution))
             print DELIMITER
         else:
             if commits.empty():
@@ -200,11 +213,18 @@ def make_commit(commit, prefix):
 
     if flag:
         git_commit = ['git', 'commit', '--amend']
-        os.environ['GIT_AUTHOR_DATE'] = payload['author']
-        os.environ['GIT_COMMITTER_DATE'] = payload['committer']
+        metadata = who(commit)
+
+        os.environ['GIT_AUTHOR_NAME'] = metadata['author-name']
+        os.environ['GIT_AUTHOR_EMAIL'] = metadata['author-email']
+        os.environ['GIT_AUTHOR_DATE'] = metadata['author-date']
+
+        os.environ['GIT_COMMITTER_NAME'] = metadata['committer-name']
+        os.environ['GIT_COMMITTER_EMAIL'] = metadata['committer-email']
+        os.environ['GIT_COMMITTER_DATE'] = metadata['committer-date']
 
         messages = payload['message'].split('\n') + [string]
-        messages = map(lambda x: x if x != '' else '-m', messages)
+        messages = map(lambda x: x if len(x) > 0 else '-m', messages)
 
         commit_it = git_commit + messages
 
@@ -218,8 +238,9 @@ def make_commit(commit, prefix):
         stdout, _ = execute.communicate()
         print stdout
 
-        del os.environ['GIT_AUTHOR_DATE']
-        del os.environ['GIT_COMMITTER_DATE']
+        del(os.environ['GIT_AUTHOR_NAME'], os.environ['GIT_COMMITTER_NAME'],
+            os.environ['GIT_AUTHOR_EMAIL'], os.environ['GIT_COMMITTER_EMAIL'],
+            os.environ['GIT_AUTHOR_DATE'], os.environ['GIT_COMMITTER_DATE'])
 
     return True if post(expected, commit) else False
 
